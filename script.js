@@ -21,6 +21,8 @@ let updateLogs = [
       "🔫 Rocket Launcher Damage : 30 -> 9 ",
       "🚀 Rocket Launcher Ammo : 6 -> 3",
       "💥 Rocket Launcher Splash Radius 60 -> 75",
+      "Fixed known bugs:",
+      "🛠️ Arrow keys cause the web move",
     ],
   },
   {
@@ -66,6 +68,25 @@ function showLog(index) {
     index === updateLogs.length - 1;
   document.getElementById("btnNextLog").disabled = index === 0;
 }
+
+// Blokir default scroll untuk arrow keys & spasi
+window.addEventListener("keydown", (e) => {
+  if (
+    ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)
+  ) {
+    e.preventDefault();
+  }
+  keys[e.key.toLowerCase()] = true;
+});
+
+window.addEventListener("keyup", (e) => {
+  if (
+    ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)
+  ) {
+    e.preventDefault();
+  }
+  keys[e.key.toLowerCase()] = false;
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   const modal = document.getElementById("updateLogModal");
