@@ -9,6 +9,8 @@ let updateLogs = [
     version: "1.0.1 Mini Update",
     date: "2025-09-17",
     changes: [
+      "Fixed known bugs:",
+      "🛠️ Arrow keys cause the web move",
       "I haven't playtested the boss, thanks for who testing it, here's a rework:",
       "🔻Difficulty step per level : 3x -> 1.8x",
       "🔻Boss HP : 100 -> 40",
@@ -21,8 +23,6 @@ let updateLogs = [
       "🔫 Rocket Launcher Damage : 30 -> 9 ",
       "🚀 Rocket Launcher Ammo : 6 -> 3",
       "💥 Rocket Launcher Splash Radius 60 -> 75",
-      "Fixed known bugs:",
-      "🛠️ Arrow keys cause the web move",
     ],
   },
   {
