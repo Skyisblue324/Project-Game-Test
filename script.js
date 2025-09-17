@@ -4,6 +4,118 @@ const ctx = canvas.getContext("2d");
 let player, bullets, enemies, enemyBullets, enemyQueue;
 let score, lives, level, totalEnemies, enemiesKilled;
 let keys = {};
+let updateLogs = [
+  {
+    version: "1.0.1 Mini Update",
+    date: "2025-09-17",
+    changes: [
+      "I haven't playtested the boss, thanks for who testing it, here's a rework:",
+      "🔻Difficulty step per level : 3x -> 1.8x",
+      "🔻Boss HP : 100 -> 40",
+      "🔻Boss shotgun firerate : 2s -> 3.5s",
+      "🔼 Boss firerate cooldown : 4s -> 3.75s",
+      "🔻Boss' ability cooldown : 3s -> 3.75s",
+      "🔻Boss' bullet count : 12 -> 9",
+      "For adjusment the reworked boss, some buff may recieve adjustment not a nerf as follows:",
+      "🔫 Sniper Damage : 45 -> 7",
+      "🔫 Rocket Launcher Damage : 30 -> 9 ",
+      "🚀 Rocket Launcher Ammo : 6 -> 3",
+      "💥 Rocket Launcher Splash Radius 60 -> 75",
+    ],
+  },
+  {
+    version: "1.0.0 Launching Update",
+    date: "2025-09-12",
+    changes: [
+      "🚀 New buff system with icons & animations",
+      "🛡️ Shield & Rocket Launcher mechanics",
+      "🎵 Retro sound effects",
+      "📌 UI improvements",
+    ],
+  },
+];
+
+let currentLogIndex = 0;
+
+function loadUpdateLogs() {
+  currentLogIndex = 0;
+  showLog(currentLogIndex);
+}
+
+function showLog(index) {
+  if (!updateLogs.length) return;
+  const log = updateLogs[index];
+
+  // Judul & tanggal
+  document.getElementById(
+    "updateLogTitle"
+  ).textContent = `Update ${log.version}`;
+  document.getElementById("updateLogDate").textContent = log.date;
+
+  // List perubahan
+  const list = document.getElementById("updateLogList");
+  list.innerHTML = "";
+  log.changes.forEach((change) => {
+    const entry = document.createElement("div"); // pakai div/p agar fleksibel
+    entry.textContent = change;
+    list.appendChild(entry);
+  });
+
+  // Enable/disable tombol navigasi
+  document.getElementById("btnPrevLog").disabled =
+    index === updateLogs.length - 1;
+  document.getElementById("btnNextLog").disabled = index === 0;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = document.getElementById("updateLogModal");
+  const btnOpen = document.getElementById("btnUpdateLog");
+  const btnClose = document.getElementById("btnCloseUpdateLog");
+  const btnPrev = document.getElementById("btnPrevLog");
+  const btnNext = document.getElementById("btnNextLog");
+
+  function openModal() {
+    modal.classList.remove("hidden", "fade-out");
+    void modal.offsetWidth;
+    modal.classList.add("fade-in");
+  }
+
+  function closeModal() {
+    modal.classList.remove("fade-in");
+    modal.classList.add("fade-out");
+    setTimeout(() => modal.classList.add("hidden"), 400);
+  }
+
+  btnOpen.addEventListener("click", openModal);
+  btnClose.addEventListener("click", closeModal);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  btnPrev.addEventListener("click", () => {
+    if (currentLogIndex < updateLogs.length - 1) {
+      currentLogIndex++;
+      showLog(currentLogIndex);
+    }
+  });
+
+  btnNext.addEventListener("click", () => {
+    if (currentLogIndex > 0) {
+      currentLogIndex--;
+      showLog(currentLogIndex);
+    }
+  });
+
+  // auto tampil sekali saat pertama kali buka
+  if (!localStorage.getItem("updateLogShown")) {
+    openModal();
+    localStorage.setItem("updateLogShown", "true");
+  }
+
+  // load log dari file/json
+  loadUpdateLogs();
+});
 
 let allBuffs = [
   "Dodge",
@@ -56,7 +168,7 @@ const buffDescriptions = {
   "Bouncing Bullet": "Bullets bounce up to 2 enemies, 20% chance for 3rd.",
   "Healing Ring": "Heal 1 life per level (once per level).",
   "Sniper Aid": "A sniper ally targets 3 strongest enemies each level.",
-  "Rocket Launcher": "6 rockets per level, high damage, splash on hit.",
+  "Rocket Launcher": "3 rockets per level, high damage, splash on hit.",
   "Second Chance": "Revive once after death.",
 };
 
@@ -317,7 +429,7 @@ function initGame() {
 
 function startLevel() {
   levelCleared = false;
-  totalEnemies = Math.min(200, 5 + (level - 1) * 3);
+  totalEnemies = Math.min(200, 5 + Math.floor((level - 1) * 1.8));
 
   if (activeBuffs.includes("Assault")) {
     totalEnemies = Math.floor(totalEnemies * 0.9);
@@ -336,7 +448,7 @@ function startLevel() {
 
   // Rocket Launcher → reset amunisi
   if (activeBuffs.includes("Rocket Launcher")) {
-    rocketAmmo = 6;
+    rocketAmmo = 3;
   }
 
   enemiesKilled = 0;
@@ -351,10 +463,10 @@ function startLevel() {
       y: 100,
       w: 80,
       h: 80,
-      hp: 100,
-      maxHp: 100,
-      fireCooldown: 2000,
-      summonCooldown: 3000,
+      hp: 40,
+      maxHp: 40,
+      fireCooldown: 3500,
+      summonCooldown: 3750,
     };
 
     // hanya 20% dari gelombang normal
@@ -874,11 +986,11 @@ function update(dt) {
         if (b.rocket) {
           const cx = b.x; // impact center (pakai posisi peluru saat kena)
           const cy = b.y;
-          const BLAST = 60; // blast radius (px) — ubah kalau mau lebih besar/kecil
+          const BLAST = 75; // blast radius (px) — ubah kalau mau lebih besar/kecil
 
           // visual & suara ledakan inti
           createExplosion(cx, cy, "orange");
-          rocketExplosions.push({ x: cx, y: cy, r: 0, maxR: BLAST, life: 30 });
+          rocketExplosions.push({ x: cx, y: cy, r: 0, maxR: BLAST, life: 9 });
 
           // HAPUS semua musuh yang berada dalam radius blast
           for (let j = enemies.length - 1; j >= 0; j--) {
@@ -1087,17 +1199,27 @@ function update(dt) {
     // shotgun attack
     boss.fireCooldown -= dt;
     if (boss.fireCooldown <= 0) {
-      boss.fireCooldown = 4000; // reset 4 detik
-      let spread = Math.PI / 2; // 90 derajat
-      for (let i = 0; i < 12; i++) {
-        let angle = -spread / 2 + (spread / 11) * i;
+      boss.fireCooldown = 3750; // reset 3.75 detik
+      let bulletCount = 9; // jumlah peluru (ubah sesuai nerf/buff)
+      let spread = Math.PI / 2; // total sudut spread = 90 derajat
+
+      // arah dasar = ke player
+      let dx = player.x - boss.x;
+      let dy = player.y - boss.y;
+      let baseAngle = Math.atan2(dy, dx);
+
+      for (let i = 0; i < bulletCount; i++) {
+        // offset tiap peluru relatif dari arah ke player
+        let offset = -spread / 2 + (spread / (bulletCount - 1)) * i;
+        let angle = baseAngle + offset;
+
         enemyBullets.push({
           x: boss.x,
           y: boss.y,
           w: 6,
           h: 12,
-          vx: Math.sin(angle) * 4,
-          vy: Math.cos(angle) * 4,
+          vx: Math.cos(angle) * 4,
+          vy: Math.sin(angle) * 4,
           dmg: 1,
         });
       }
@@ -1162,7 +1284,7 @@ function update(dt) {
       createExplosion(s.target.x, s.target.y, "red");
 
       if (s.target === boss) {
-        boss.hp -= 45;
+        boss.hp -= 7;
         if (boss.hp <= 0) {
           createExplosion(boss.x, boss.y, "orange");
           boss = null;
@@ -1806,7 +1928,7 @@ function updateBuffList() {
       remaining = healUsed ? 0 : 1;
       color = "hotpink";
     } else if (buff === "Rocket Launcher") {
-      max = 6;
+      max = 3;
       remaining = rocketAmmo / max;
       color = "purple";
     } else if (buff === "Shield") {
