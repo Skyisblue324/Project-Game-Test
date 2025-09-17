@@ -36,7 +36,6 @@
         <!-- GAME CANVAS TENGAH -->
         <div id="gameWrapper">
           <canvas id="game" width="720" height="480"></canvas>
-          <!-- COPYRIGHT -->
           <div id="copyright">Frederick Kinton - Ariq © 2025</div>
         </div>
 
@@ -74,57 +73,26 @@
     <!-- MODAL UPDATE LOG -->
     <div id="updateLogModal" class="hidden">
       <div class="modal-content">
-        <h2>Update Log 1.0!</h2>
-        <ul>
-          <p>
-            Welcome! We hope you'd enjoy the game, the first launch features:
-          </p>
-          <li>🚀 New buff system with icons & animations</li>
-          <li>🛡️ Added Shield & Rocket Launcher mechanics</li>
-          <li>🎵 Retro sound effects embedded</li>
-          <li>📌 UI improvements</li>
-          <p>Real game soon? 👀</p>
-        </ul>
+        <h2 id="updateLogTitle"></h2>
+        <p id="updateLogDate"></p>
+        <ul id="updateLogList"></ul>
+
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+          "
+        >
+          <button id="btnPrevLog">Previous</button>
+          <button id="btnNextLog">Next</button>
+        </div>
+
         <button id="btnCloseUpdateLog">Close</button>
       </div>
     </div>
 
     <script src="script.js"></script>
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const modal = document.getElementById("updateLogModal");
-        const btnOpen = document.getElementById("btnUpdateLog");
-        const btnClose = document.getElementById("btnCloseUpdateLog");
-
-        function openModal() {
-          modal.classList.remove("hidden", "fade-out");
-          void modal.offsetWidth; // reset animasi
-          modal.classList.add("fade-in");
-        }
-
-        function closeModal() {
-          modal.classList.remove("fade-in");
-          modal.classList.add("fade-out");
-          // tunggu animasi selesai baru hidden
-          setTimeout(() => {
-            modal.classList.add("hidden");
-          }, 400);
-        }
-
-        btnOpen.addEventListener("click", openModal);
-        btnClose.addEventListener("click", closeModal);
-
-        // Klik area gelap untuk tutup
-        modal.addEventListener("click", (e) => {
-          if (e.target === modal) closeModal();
-        });
-
-        // Auto show sekali saat pertama kali buka
-        if (!localStorage.getItem("updateLogShown")) {
-          openModal();
-          localStorage.setItem("updateLogShown", "true");
-        }
-      });
-    </script>
+    <script src="updateLog.js"></script>
   </body>
 </html>
