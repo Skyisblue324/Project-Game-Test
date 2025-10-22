@@ -547,3 +547,138 @@ button:focus,
   box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.45);
   opacity: 0.02;
 }
+
+/* === Smooth fly-to-slot for buff selection (fix align) === */
+.flyBuff {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 140px; /* diatur via JS */
+  height: 200px;
+  pointer-events: none;
+  z-index: 1500;
+  /* PENTING: origin kiri-atas agar translate dihitung dari sudut atas kiri */
+  transform-origin: top left;
+  will-change: transform, opacity, filter;
+  opacity: 0;
+  filter: blur(6px) drop-shadow(0 14px 28px rgba(0, 0, 0, 0.55));
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    rgba(25, 35, 45, 0.95),
+    rgba(10, 15, 20, 0.95)
+  );
+  border: 2px solid #5fe8ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flyBuff.animating {
+  animation: flyEase 360ms cubic-bezier(0.22, 0.82, 0.26, 0.98) forwards;
+}
+
+@keyframes flyEase {
+  0% {
+    opacity: 0;
+    filter: blur(6px) drop-shadow(0 14px 28px rgba(0, 0, 0, 0.55));
+  }
+  40% {
+    opacity: 0.9;
+    filter: blur(2px) drop-shadow(0 12px 24px rgba(0, 0, 0, 0.5));
+  }
+  70% {
+    opacity: 1;
+    filter: blur(1px) drop-shadow(0 10px 20px rgba(0, 0, 0, 0.45));
+    transform: translate(var(--end-x), var(--end-y))
+      scale(calc(var(--end-scale) * 1.04)) rotate(0.6deg);
+  }
+  100% {
+    opacity: 0.96;
+    filter: blur(0px) drop-shadow(0 8px 18px rgba(0, 0, 0, 0.4));
+    transform: translate(var(--end-x), var(--end-y)) scale(var(--end-scale))
+      rotate(0deg);
+  }
+}
+
+/* Pulse slot tujuan (sudah ada), biarkan / timing halus */
+.buffCard.acceptPulse {
+  animation: slotPulse 420ms ease-out 1;
+}
+@keyframes slotPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(95, 232, 255, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgba(95, 232, 255, 0);
+  }
+}
+
+.flyBuff img {
+  width: 70%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.5));
+}
+
+.overlayFade {
+  animation: overlayOut 220ms ease forwards;
+}
+@keyframes overlayOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+#dialogBox {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  background: rgba(10, 15, 20, 0.95);
+  border: 1px solid rgba(160, 240, 255, 0.08);
+  padding: 16px 24px;
+  border-radius: 12px;
+  color: #d8f6ff;
+  font-size: 16px;
+  font-family: "Orbitron", sans-serif;
+  z-index: 9999;
+  max-width: 700px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  animation: fadeInDialog 0.3s ease forwards;
+}
+
+#dialogBox.hidden {
+  display: none;
+}
+
+#dialogAvatar {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  margin-right: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+#dialogText {
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+@keyframes fadeInDialog {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
