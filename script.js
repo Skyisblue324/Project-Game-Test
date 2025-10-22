@@ -1,7 +1,17 @@
 // ===== Canvas =====
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+let mouseX = 0;
+let mouseY = 0;
+let pickingBuff = false; // freeze update() sementara animasi fly-to-slot berjalan
 
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  mouseX = (e.clientX - rect.left) * scaleX;
+  mouseY = (e.clientY - rect.top) * scaleY;
+});
 // ==== GLOBAL NO-SCROLL GUARDS ====
 // Matikan wheel/trackpad scroll
 window.addEventListener(
@@ -40,7 +50,99 @@ window.addEventListener(
   },
   { passive: false }
 );
+// Dialogue
+const levelDialogs = {
+  1: "Welcome, player. Your mission begins now. Eliminate all threats. Use the WASD or arrow keys to move around and space to shoot!",
+  3: "This new enemy is deadly... it's shoots the rocket that deal a lot of damage to our ship",
+  5: "A powerful boss awaits. Prepare for a tough battle!",
+  7: "You're doing well. But the void is endless...",
+  10: "Good luck, this is your second boss fight, also the game appear to be never end.",
+  12: "I may be update the game, just wait some time but I'm all alone",
+  15: "Survive still? I'm the dev behind of this suprised...",
+  20: "Sigh... Go touch some grass. Get a life, this game never ends, I'm tired enough of you. No more dialogues from now on.",
+};
 
+const specialDeathDialogs = [
+  "Died already? Improve your literacy and try again...",
+  "Noobies.",
+  "Really? This game is not designed for you, I guess...",
+  "I'm so cold heck yeah.",
+  "Hmm... this game hard, huh?",
+];
+
+let dialogTypingInterval = null;
+let dialogTimeout = null;
+
+function clearAllDialogTimers() {
+  if (dialogTypingInterval) {
+    clearInterval(dialogTypingInterval);
+    dialogTypingInterval = null;
+  }
+  if (dialogTimeout) {
+    clearTimeout(dialogTimeout);
+    dialogTimeout = null;
+  }
+}
+
+function showSpecialDeathDialog() {
+  clearAllDialogTimers(); // ⛔ pastikan bersih
+
+  const dialogBox = document.getElementById("dialogBox");
+  const dialogText = document.getElementById("dialogText");
+
+  const specialText =
+    specialDeathDialogs[Math.floor(Math.random() * specialDeathDialogs.length)];
+  dialogText.textContent = "";
+  dialogBox.classList.remove("hidden");
+
+  let i = 0;
+  const typingSpeed = 45;
+  const extraReadTime = 3000;
+
+  dialogTypingInterval = setInterval(() => {
+    dialogText.textContent += specialText[i];
+    i++;
+    if (i >= specialText.length) {
+      clearInterval(dialogTypingInterval);
+      dialogTypingInterval = null;
+      const readTime = specialText.length * typingSpeed + extraReadTime;
+      dialogTimeout = setTimeout(() => {
+        dialogBox.classList.add("hidden");
+        dialogTimeout = null;
+      }, readTime);
+    }
+  }, typingSpeed);
+}
+
+function showLevelDialog(level) {
+  clearAllDialogTimers(); // ⛔ pastikan bersih
+
+  const dialog = levelDialogs[level];
+  if (!dialog) return;
+
+  const dialogBox = document.getElementById("dialogBox");
+  const dialogText = document.getElementById("dialogText");
+
+  dialogText.textContent = "";
+  dialogBox.classList.remove("hidden");
+
+  let i = 0;
+  const typingSpeed = 40;
+
+  dialogTypingInterval = setInterval(() => {
+    dialogText.textContent += dialog[i];
+    i++;
+    if (i >= dialog.length) {
+      clearInterval(dialogTypingInterval);
+      dialogTypingInterval = null;
+      const readTime = Math.max(4000, dialog.length * typingSpeed + 1500);
+      dialogTimeout = setTimeout(() => {
+        dialogBox.classList.add("hidden");
+        dialogTimeout = null;
+      }, readTime);
+    }
+  }, typingSpeed);
+}
 // ===== Space Themes (Parallax) =====
 const spaceThemes = [
   {
@@ -85,13 +187,10 @@ const spaceThemes = [
   },
 ];
 let currentSpaceTheme = spaceThemes[0];
-
 let shake = 0;
-
 // ===== PERF: background cache =====
 const bgCanvas = document.createElement("canvas");
 const bgCtx = bgCanvas.getContext("2d");
-
 // ===== PERF: star layers offscreen (tiled wrap) =====
 const starLayers = {
   far: {
@@ -116,26 +215,21 @@ const starLayers = {
 starLayers.far.ctx = starLayers.far.cvs.getContext("2d");
 starLayers.mid.ctx = starLayers.mid.cvs.getContext("2d");
 starLayers.near.ctx = starLayers.near.cvs.getContext("2d");
-
 // Twinkles (lightweight)
 let twinkles = []; // {x,y,t}
 const MAX_TWINKLES_HQ = 18;
 const MAX_TWINKLES_LQ = 8;
-
 // Quality tier auto-switch
 let quality = "high"; // "high" | "low"
 let fpsSamples = [];
 let avgFPS = 60;
-
 // ===== HUD throttle & dt clamp =====
 const HUD_UPDATE_MS = 100; // ~10/s
 let hudAccum = 0;
 const MAX_DT_MS = 34; // ~30fps clamp
-
 // Caps
 const MAX_EXPLOSIONS = 120;
 const MAX_ROCKET_RINGS = 24;
-
 // ===== Game State =====
 let player, bullets, enemies, enemyBullets, enemyQueue;
 let score, lives, level, totalEnemies, enemiesKilled;
@@ -148,18 +242,39 @@ let gameOverState = false;
 let lastShot = 0;
 let highScore = parseInt(localStorage.getItem("highScore") ?? "0", 10);
 document.getElementById("highscore").textContent = highScore;
-
 let showBuffSelection = false;
 let activeBuffs = [];
 let healUsed = false;
 let shieldCharges = 0;
-
 let boss = null;
-
 let starSpeed = 1;
 let warp = false;
 let levelTextTimer = 0;
 let levelCleared = false;
+// === Dodge visual feedback ===
+let dodgeTexts = []; // array efek teks lokal: {x, y, vx, vy, life, maxLife, alpha, scale}
+let dodgeBanner = { life: 0, maxLife: 0 }; // banner top (opsional)
+// Spawn teks "DODGED!" di titik benturan
+function spawnDodgeText(x, y) {
+  dodgeTexts.push({
+    x,
+    y,
+    vx: Math.random() * 0.8 - 0.4, // sedikit geser kanan/kiri
+    vy: -0.9, // naik pelan
+    life: 800, // ms
+    maxLife: 800,
+    alpha: 1,
+    scale: 1.0,
+  });
+  // batasi jumlah efek agar ringan
+  if (dodgeTexts.length > 20) dodgeTexts.shift();
+}
+
+// Banner atas canvas selama ~0.8s
+function triggerDodgeBanner(duration = 800) {
+  dodgeBanner.life = duration;
+  dodgeBanner.maxLife = duration;
+}
 
 // Demo
 let demoPlayer,
@@ -168,11 +283,9 @@ let demoPlayer,
   demoEnemyBullets,
   demoTimer = 0;
 let demoRespawnTimeout = null;
-
 // Explosions
 let explosions = [];
 let rocketExplosions = [];
-
 // Audio (base64)
 const shootSFX = new Audio(
   "data:audio/wav;base64,UklGRtQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YZQAAACAgICAf39/f39/f3x8fHx7e3t7e3t6enp5eXl4eHh3d3d2dnZ1dXV0dHRzc3Nzc3Nzc3N0dHR1dXV2dnZ3d3d4eHh5eXl6enp7e3t8fHx/f3+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA=="
@@ -183,7 +296,6 @@ const explodeSFX = new Audio(
 const gameOverSFX = new Audio(
   "data:audio/wav;base64,UklGRqQAAABXQVZFZm10 IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YZQAAAB/f3x7e3p5eHd2dXNycXBycG9ubWxramloaGdmZWRjYmFgX15cW1pZWFdWVVRTUlFPTk1MS0pJSEdGRURDQkFAPz49PDs6OTg3NjU0MzIxMC8uLSwrKikoJyYlJCMiISAfHh0cGhoZGBcWFRQTEhEQDw4NDAsKCQgGBAICAA=="
 );
-
 // Const
 const PLAYER_SPEED = 4,
   BULLET_SPEED = 8,
@@ -193,7 +305,6 @@ const PLAYER_SPEED = 4,
 const ENEMY_FIRE_MIN = 1600,
   ENEMY_FIRE_MAX = 2400,
   MAX_ENEMY_BULLETS = 8;
-
 // Update Log (tetap)
 let updateLogs = [
   {
@@ -201,7 +312,10 @@ let updateLogs = [
     date: "2025-10-22",
     changes: [
       "🛠️ Improved gameplay & stability and newest UI!!!",
-      "Nothing that new thing, kiddos.",
+      "🪄 Added the brand new animations on cards selection buff, also improved QoL.",
+      "💬 Dialogues!!!",
+      "👾 Bugfixes: Kamikaze ship does not deal damage and require 3 hits instead 1.",
+      "🔼 Dodge chance: 25% -> 50%",
     ],
   },
   {
@@ -214,7 +328,7 @@ let updateLogs = [
       "🔻Difficulty step per level : 3x -> 1.8x",
       "🔻Boss HP : 100 -> 40",
       "🔻Boss shotgun firerate : 2s -> 3.5s",
-      "🔺Boss firerate cooldown : 4s -> 3.75s",
+      "🔻Boss firerate cooldown : 4s -> 3.75s",
       "🔻Boss' ability cooldown : 3s -> 3.75s",
       "🔻Boss' bullet count : 12 -> 9",
       "Buff adjustments:",
@@ -297,7 +411,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   loadUpdateLogs();
 });
-
 // ===== Buffs & Icons =====
 let allBuffs = [
   "Dodge",
@@ -318,7 +431,6 @@ allBuffs.forEach((b) => {
   img.src = `img/${key}.png`;
   buffIcons[b] = img;
 });
-
 // ===== Resize & caches rebuild =====
 function rebuildBackgroundCache() {
   const W = canvas.width,
@@ -330,22 +442,16 @@ function rebuildBackgroundCache() {
   g.addColorStop(1, currentSpaceTheme.bgBottom);
   bgCtx.fillStyle = g;
   bgCtx.fillRect(0, 0, W, H);
-
   bgCtx.save();
   bgCtx.globalAlpha = 0.8;
   bgCtx.fillStyle = currentSpaceTheme.nebula;
-  bgCtx.beginPath();
-  bgCtx.ellipse(W * 0.7, H * 0.3, 220, 110, 0, 0, Math.PI * 2);
-  bgCtx.fill();
   bgCtx.restore();
 }
-
 // Star layers re-render
 function rebuildStarLayers() {
   const W = canvas.width,
     H = canvas.height;
   const color = currentSpaceTheme.starColor;
-
   for (const layer of Object.values(starLayers)) {
     layer.cvs.width = W;
     layer.cvs.height = H;
@@ -378,7 +484,6 @@ function rebuildStarLayers() {
     }
     layer.offsetY = 0;
   }
-
   // Twinkles reset (jumlah tergantung quality)
   twinkles = [];
   const maxTw = quality === "high" ? MAX_TWINKLES_HQ : MAX_TWINKLES_LQ;
@@ -390,14 +495,12 @@ function rebuildStarLayers() {
     });
   }
 }
-
 function setSpaceTheme(lvl) {
   currentSpaceTheme =
     spaceThemes[Math.floor((lvl - 1) / 3) % spaceThemes.length];
   rebuildBackgroundCache();
   rebuildStarLayers();
 }
-
 function resizeCanvas() {
   const scale = Math.min(window.innerWidth / 900, window.innerHeight / 600);
   canvas.style.width = canvas.width * scale + "px";
@@ -407,16 +510,13 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas(); // first
-
 // ===== Draw helpers =====
 function drawBackground() {
   ctx.drawImage(bgCanvas, 0, 0);
 }
-
 function drawStars() {
   const W = canvas.width,
     H = canvas.height;
-
   for (const layer of Object.values(starLayers)) {
     layer.offsetY += starSpeed * layer.speedMul;
     if (layer.offsetY >= H) layer.offsetY -= H;
@@ -424,7 +524,6 @@ function drawStars() {
     ctx.drawImage(layer.cvs, 0, Math.floor(layer.offsetY));
     ctx.drawImage(layer.cvs, 0, Math.floor(layer.offsetY) - H);
   }
-
   // twinkles
   const twColor = currentSpaceTheme.twinkleColor;
   const doGlow = quality === "high";
@@ -451,7 +550,6 @@ function drawStars() {
 function addShake(strength = 6) {
   shake = Math.max(shake, strength);
 }
-
 // ===== Player/Enemy drawing =====
 function drawPlayer(x, y, color = "#61dafb") {
   const doGlow = quality === "high";
@@ -466,7 +564,6 @@ function drawPlayer(x, y, color = "#61dafb") {
   ctx.lineTo(x + 12, y + 12);
   ctx.closePath();
   ctx.fill();
-
   if (doGlow) {
     ctx.shadowBlur = 12;
     ctx.shadowColor = "#5fe8ff";
@@ -533,7 +630,6 @@ function drawEnemy(e) {
   }
   ctx.fill();
 }
-
 // ===== explodeBullet fix (canvas ctx) =====
 function explodeBullet(bullet) {
   let explosion = { x: bullet.x, y: bullet.y, r: 2, alpha: 1 };
@@ -551,7 +647,6 @@ function explodeBullet(bullet) {
     if (explosion.alpha <= 0) clearInterval(interval);
   }, 30);
 }
-
 // ===== Input (keys) =====
 function resetKeys() {
   keys = {};
@@ -566,9 +661,15 @@ window.addEventListener("keyup", (e) => {
     e.preventDefault();
   keys[e.key.toLowerCase()] = false;
 });
-
 // ===== Game Init =====
 function initGame() {
+  // ⛔ Reset dialog
+  const dialogBox = document.getElementById("dialogBox");
+  const dialogText = document.getElementById("dialogText");
+  dialogBox.classList.add("hidden");
+  dialogText.textContent = "";
+  clearAllDialogTimers();
+
   gameStarted = false;
   player = { x: canvas.width / 2, y: canvas.height - 50, w: 24, h: 24 };
   bullets = [];
@@ -584,7 +685,6 @@ function initGame() {
   showMenu = false;
   explosions = [];
   boss = null;
-
   offeredBuffs = [];
   activeBuffs = [];
   rocketAmmo = 0;
@@ -597,7 +697,6 @@ function initGame() {
   secondChanceUsed = false;
   secondChanceShieldActive = false;
   secondChanceShieldTimer = 0;
-
   const buffGrid = document.getElementById("buffGrid");
   if (buffGrid) {
     buffGrid.querySelectorAll(".buffCard").forEach((card) => {
@@ -626,7 +725,6 @@ function initGame() {
       if (plus) plus.style.display = "";
     });
   }
-
   resetKeys();
   setSpaceTheme(1);
   gameRunning = true;
@@ -634,7 +732,6 @@ function initGame() {
   gameStarted = true;
   updateBuffList();
 }
-
 // ===== Levels & Buffs =====
 let offeredBuffs = [],
   sniperAlly = null,
@@ -645,9 +742,8 @@ let rocketAmmo = 0,
   secondChanceUsed = false,
   secondChanceShieldActive = false,
   secondChanceShieldTimer = 0;
-
 const buffDescriptions = {
-  Dodge: "25% chance to avoid damage.",
+  Dodge: "50% chance to avoid damage.",
   Rage: "Shoot faster (+20%) per lost life.",
   Shield: "One shield per level, absorbs 2 hits.",
   Agility: "Increase ship speed by 20%.",
@@ -658,26 +754,23 @@ const buffDescriptions = {
   "Rocket Launcher": "3 rockets per level, high damage, splash on hit.",
   "Second Chance": "Revive once after death.",
 };
-
 function startLevel() {
   setSpaceTheme(level);
+  showLevelDialog(level);
   levelCleared = false;
   totalEnemies = Math.min(200, 5 + Math.floor((level - 1) * 1.8));
   if (activeBuffs.includes("Assault"))
     totalEnemies = Math.floor(totalEnemies * 0.9);
-
   if (activeBuffs.includes("Healing Ring")) healUsed = false;
   if (activeBuffs.includes("Sniper Aid")) {
     sniperShots = [];
     sniperUsedThisLevel = false;
   }
   if (activeBuffs.includes("Rocket Launcher")) rocketAmmo = 3;
-
   enemiesKilled = 0;
   enemies = [];
   enemyQueue = [];
   boss = null;
-
   if (level % 5 === 0) {
     boss = {
       x: canvas.width / 2,
@@ -728,37 +821,98 @@ function startLevel() {
       });
     }
   }
-
   if (activeBuffs.includes("Shield")) shieldCharges = 2;
-
   refreshBuffCards(true);
   levelTextTimer = 2000;
 }
-
 // Buff selection (mouse)
 canvas.addEventListener("click", (e) => {
-  if (!showBuffSelection) return;
+  // ⛔ blok saat tidak di layer pilih / sedang animasi
+  if (!showBuffSelection || pickingBuff) return;
+
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width,
     scaleY = canvas.height / rect.height;
   const x = (e.clientX - rect.left) * scaleX,
     y = (e.clientY - rect.top) * scaleY;
-  offeredBuffs.forEach((buff, i) => {
-    let cardW = canvas.width * 0.15,
-      cardH = canvas.height * 0.3;
-    let totalW = offeredBuffs.length * (cardW + 20) - 20;
+
+  // Gunakan for biasa (bisa "break"), bukan forEach (tidak bisa break)
+  for (let i = 0; i < offeredBuffs.length; i++) {
+    const buff = offeredBuffs[i];
+    let cardW = canvas.width * 0.18,
+      cardH = canvas.height * 0.38;
+    let totalW = offeredBuffs.length * (cardW + 30) - 30;
     let startX = (canvas.width - totalW) / 2;
-    let bx = startX + i * (cardW + 20),
-      by = canvas.height * 0.35;
+    let bx = startX + i * (cardW + 30),
+      by = canvas.height * 0.32;
+
     if (x >= bx && x <= bx + cardW && y >= by && y <= by + cardH) {
-      activeBuffs.push(buff);
-      updateBuffList();
-      if (buff === "Shield") shieldCharges = 2;
-      if (buff === "Assault") totalEnemies = Math.floor(totalEnemies * 0.9);
+      // ==== ANIMASI + ANTI-DOUBLETAP ====
+      // 1) tandai sedang picking (blok klik selanjutnya)
+      pickingBuff = true;
+      // 2) nonaktifkan pointer di canvas sementara
+      canvas.style.pointerEvents = "none";
+
+      // fromRect untuk ghost
+      const cRect = rect; // sudah dapat di atas
+      const fromRect = {
+        left: cRect.left + bx * (cRect.width / canvas.width),
+        top: cRect.top + by * (cRect.height / canvas.height),
+        width: cardW * (cRect.width / canvas.width),
+        height: cardH * (cRect.height / canvas.height),
+      };
+
+      // Sembunyikan overlay pemilihan agar slot tujuan kelihatan
       showBuffSelection = false;
-      startLevel();
+
+      // Jalankan animasi
+      animateBuffPick(buff, fromRect, () => {
+        // Pastikan tidak duplikat:
+        if (!activeBuffs.includes(buff)) {
+          activeBuffs.push(buff);
+          if (buff === "Healing Ring") {
+            const bannerDuration = 1600;
+            const bannerText = "Press 'E' to activate Healing Ring";
+            const bannerImage = new Image();
+            bannerImage.src = "img/healing_ring.png";
+            bannerImage.onload = () => {
+              const bannerCanvas = document.createElement("canvas");
+              bannerCanvas.width = 400;
+              bannerCanvas.height = 100;
+              const bctx = bannerCanvas.getContext("2d");
+              bctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+              bctx.fillRect(0, 0, bannerCanvas.width, bannerCanvas.height);
+              bctx.drawImage(bannerImage, 10, 10, 80, 80);
+              bctx.fillStyle = "#FFFFFF";
+              bctx.font = "16px Orbitron, sans-serif";
+              bctx.fillText(bannerText, 100, 50);
+              const banner = document.createElement("div");
+              banner.style.position = "fixed";
+              banner.style.left = "50%";
+              banner.style.top = "20px";
+              banner.style.transform = "translateX(-50%)";
+              banner.style.zIndex = "9999";
+              banner.appendChild(bannerCanvas);
+              document.body.appendChild(banner);
+              setTimeout(() => banner.remove(), bannerDuration);
+            };
+          }
+        }
+
+        updateBuffList();
+        if (buff === "Shield") shieldCharges = 2;
+        if (buff === "Assault") totalEnemies = Math.floor(totalEnemies * 0.9);
+
+        startLevel(); // lanjut level
+
+        // pulihkan state anti-spam
+        pickingBuff = false;
+        canvas.style.pointerEvents = "";
+      });
+
+      break; // ⬅️ stop, jangan cek kartu lain
     }
-  });
+  }
 });
 
 // ===== Spawns =====
@@ -768,7 +922,6 @@ function spawnEnemies() {
     enemies.push(enemyQueue.shift());
   }
 }
-
 // rect overlap
 function rectsOverlap(a, b) {
   return (
@@ -778,7 +931,6 @@ function rectsOverlap(a, b) {
     a.y + a.h / 2 > b.y - b.h / 2
   );
 }
-
 // Explosions
 function createExplosion(x, y, color = "yellow", power = 30) {
   if (explosions.length > MAX_EXPLOSIONS)
@@ -806,16 +958,13 @@ function createExplosion(x, y, color = "yellow", power = 30) {
   addShake(4);
   explodeSFX.cloneNode().play();
 }
-
 // ===== Sniper logic & drawing =====
 function updateSniper(dt) {
   if (!activeBuffs.includes("Sniper Aid")) return;
-
   for (let li = sniperLasers.length - 1; li >= 0; li--) {
     sniperLasers[li].life -= dt;
     if (sniperLasers[li].life <= 0) sniperLasers.splice(li, 1);
   }
-
   if (!sniperAlly && !sniperUsedThisLevel) {
     sniperAlly = {
       x: player.x,
@@ -833,7 +982,6 @@ function updateSniper(dt) {
     sniperAlly.x += (player.x - sniperAlly.x) * 0.1;
     sniperAlly.y = player.y - 80;
   }
-
   if (sniperAlly.state === "idle") {
     if (sniperAlly.shotsLeft > 0) {
       let visibleEnemies = enemies.filter((e) => e.y > 0 && !e._sniperTargeted);
@@ -871,7 +1019,6 @@ function updateSniper(dt) {
       sniperAlly.state = "leave";
     }
   }
-
   if (sniperAlly.state === "aiming") {
     let candidates = [];
     if (boss && boss.y > 0 && boss.y < canvas.height) candidates.push(boss);
@@ -943,7 +1090,6 @@ function updateSniper(dt) {
       sniperAlly.state = sniperAlly.shotsLeft > 0 ? "idle" : "leave";
     }
   }
-
   if (sniperAlly.state === "leave") {
     sniperAlly.y -= 5;
     if (sniperAlly.currentLaser) {
@@ -957,7 +1103,6 @@ function updateSniper(dt) {
     }
   }
 }
-
 function drawSniper() {
   if (sniperAlly) {
     ctx.save();
@@ -987,14 +1132,12 @@ function drawSniper() {
     ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
   }
 }
-
 // ===== Update =====
 function update(dt) {
   if (!gameRunning) return;
-
+  // if (pickingBuff) return; // jeda semua logika update selama animasi pick
   // Clamp dt
   if (dt > MAX_DT_MS) dt = MAX_DT_MS;
-
   // Auto quality switch
   fpsSamples.push(1000 / (dt || 16));
   if (fpsSamples.length > 30) fpsSamples.shift();
@@ -1006,11 +1149,9 @@ function update(dt) {
     quality = "high";
     rebuildStarLayers();
   }
-
   updateBuffList();
   updateSniper(dt);
   starSpeed = warp ? 6 : quality === "high" ? 1 : 0.8;
-
   let speed = PLAYER_SPEED;
   if (activeBuffs.includes("Agility")) speed *= 1.2;
   if (secondChanceShieldActive) {
@@ -1023,7 +1164,6 @@ function update(dt) {
   if (keys["arrowdown"] || keys["s"]) player.y += speed;
   player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
   player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
-
   let fireRateBonus = 1;
   if (activeBuffs.includes("Rage")) {
     let lost = 3 - lives;
@@ -1053,7 +1193,6 @@ function update(dt) {
     }
     lastShot = Date.now();
   }
-
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
     if (activeBuffs.includes("Bouncing Bullet")) {
@@ -1063,7 +1202,6 @@ function update(dt) {
     b.y += b.vy;
   }
   bullets = bullets.filter((b) => b.y > -20 && b.y < canvas.height + 20);
-
   // Enemy bullets
   for (let i = 0; i < enemyBullets.length; i++) {
     const b = enemyBullets[i];
@@ -1083,7 +1221,6 @@ function update(dt) {
     }
   }
   enemyBullets = enemyBullets.filter((b) => b.y < canvas.height + 20);
-
   // Bullet vs boss
   if (boss) {
     for (let bi = bullets.length - 1; bi >= 0; bi--) {
@@ -1139,7 +1276,6 @@ function update(dt) {
       }, 1000);
     }
   }
-
   spawnEnemies();
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
@@ -1153,6 +1289,58 @@ function update(dt) {
         let len = Math.sqrt(dx * dx + dy * dy) || 1;
         e.x += (dx / len) * 2;
         e.y += (dy / len) * 2;
+
+        // === PATCH: Mini kamikaze collision vs player ===
+        // Ketika mini menabrak player, terapkan damage setara peluru musuh:
+        // - Perhitungkan Dodge (25%) dan Shield (2 charges/level).
+        // - Mini meledak dan menghilang setelah menabrak.
+        // - Player menerima 1 damage bila tidak dodge/shield.
+        if (rectsOverlap({ x: e.x, y: e.y, w: e.w, h: e.h }, player)) {
+          // Ledakan kecil di titik tabrakan
+          createExplosion(e.x, e.y, "red", 18);
+
+          // Cek Dodge
+          if (activeBuffs.includes("Dodge") && Math.random() < 0.5) {
+            // Efek teks di titik tabrakan mini (pakai posisi musuh mini)
+            spawnDodgeText(e.x, e.y);
+            triggerDodgeBanner(800); // banner opsional
+
+            // Mini dihapus setelah gagal menabrak (karena didodge)
+            enemies.splice(i, 1);
+            i--;
+            continue; // NO DAMAGE
+          }
+
+          // Cek Shield atau Second Chance shield aktif
+          if (
+            (activeBuffs.includes("Shield") || secondChanceShieldActive) &&
+            shieldCharges > 0
+          ) {
+            shieldCharges--;
+            enemies.splice(i, 1);
+            i--;
+            // Sinkronkan UI buff (mis. indikator shield)
+            updateBuffList();
+            continue;
+          }
+
+          // Berikan damage ke player
+          lives -= 1;
+          if (lives < 0) lives = 0;
+          hitFlash = 200;
+
+          // Mini dihapus setelah tabrakan
+          enemies.splice(i, 1);
+          i--;
+
+          if (lives <= 0) {
+            gameOver();
+          } else {
+            updateBuffList();
+          }
+          continue; // lanjut ke musuh berikutnya
+        }
+        // === END PATCH ===
       } else {
         e.y += e.vy;
         e.x += e.vx;
@@ -1197,10 +1385,11 @@ function update(dt) {
           e.fireCooldown = ENEMY_FIRE_MIN * 2;
         }
       }
-      if (e.y > canvas.height - 20) gameOver();
+      // === PATCH: gameOver karena lewat batas bawah hanya untuk non-mini ===
+      if (e.type !== "mini" && e.y > canvas.height - 20) gameOver();
+      // === END PATCH ===
     }
   }
-
   // Bullets vs Enemies (+ rocket splash)
   for (let bi = bullets.length - 1; bi >= 0; bi--) {
     let b = bullets[bi];
@@ -1318,16 +1507,19 @@ function update(dt) {
     }
     if (hitHandled) continue;
   }
-
   // Enemy bullets vs Player
   for (let i = enemyBullets.length - 1; i >= 0; i--) {
     const b = enemyBullets[i];
     if (rectsOverlap(b, player)) {
-      if (b.style === "rocket") createExplosion(b.x, b.y, "orange", 22);
-      if (activeBuffs.includes("Dodge") && Math.random() < 0.25) {
-        enemyBullets.splice(i, 1);
-        continue;
+      // 1) Cek Dodge terlebih dahulu
+      if (activeBuffs.includes("Dodge") && Math.random() < 0.5) {
+        spawnDodgeText(b.x, b.y); // titik benturan pakai posisi peluru
+        triggerDodgeBanner(800); // banner opsional
+        enemyBullets.splice(i, 1); // hapus peluru yang “miss”
+        continue; // NO DAMAGE
       }
+
+      // 2) Shield
       if (
         (activeBuffs.includes("Shield") || secondChanceShieldActive) &&
         shieldCharges > 0
@@ -1336,6 +1528,9 @@ function update(dt) {
         enemyBullets.splice(i, 1);
         continue;
       }
+
+      // 3) Kena beneran (tanpa dodge/shield)
+      if (b.style === "rocket") createExplosion(b.x, b.y, "orange", 22);
       createExplosion(player.x, player.y, "red");
       enemyBullets.splice(i, 1);
       lives -= b.dmg ?? 1;
@@ -1345,7 +1540,6 @@ function update(dt) {
       else updateBuffList();
     }
   }
-
   // Explosions / rocket rings
   for (let i = 0; i < explosions.length; i++) {
     const ex = explosions[i];
@@ -1360,7 +1554,6 @@ function update(dt) {
     re.life -= 1;
     if (re.life <= 0) rocketExplosions.splice(i, 1);
   }
-
   // Boss logic
   if (boss) {
     boss.x += Math.sin(Date.now() / 1000) * 0.5;
@@ -1413,7 +1606,6 @@ function update(dt) {
       }
     }
   }
-
   // Sniper bullets update
   for (let i = sniperShots.length - 1; i >= 0; i--) {
     let s = sniperShots[i];
@@ -1490,9 +1682,7 @@ function update(dt) {
     l.life -= dt;
     return l.life > 0;
   });
-
   if (levelTextTimer > 0) levelTextTimer -= dt;
-
   if (
     !levelCleared &&
     !boss &&
@@ -1516,7 +1706,6 @@ function update(dt) {
       } else startLevel();
     }, 1000);
   }
-
   // HUD throttled
   hudAccum += dt;
   if (hudAccum >= HUD_UPDATE_MS) {
@@ -1531,7 +1720,6 @@ function update(dt) {
     document.getElementById("highscore").textContent = highScore;
   }
 }
-
 // ===== Boss draw =====
 function drawBoss(b) {
   ctx.save();
@@ -1545,7 +1733,6 @@ function drawBoss(b) {
   ctx.fill();
   ctx.restore();
 }
-
 // ===== Draw =====
 function draw() {
   let shook = false;
@@ -1555,10 +1742,8 @@ function draw() {
     shake *= 0.9;
     shook = true;
   }
-
   drawBackground();
   drawStars();
-
   if (showBuffSelection) {
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.92)";
@@ -1581,7 +1766,6 @@ function draw() {
       canvas.width / 2,
       115
     );
-
     offeredBuffs.forEach((b, i) => {
       let cardW = canvas.width * 0.18,
         cardH = canvas.height * 0.38;
@@ -1590,6 +1774,35 @@ function draw() {
       let bx = startX + i * (cardW + 30),
         by = canvas.height * 0.32;
 
+      // Deteksi hover
+      let isHovered = false;
+      if (
+        mouseX >= bx &&
+        mouseX <= bx + cardW &&
+        mouseY >= by &&
+        mouseY <= by + cardH
+      ) {
+        isHovered = true;
+      }
+
+      ctx.save();
+
+      // Wiggle hanya jika tidak di-hover
+      if (!isHovered) {
+        let wiggleAngle = Math.sin(Date.now() / 200 + i * 2) * 0.03;
+        ctx.translate(bx + cardW / 2, by + cardH / 2);
+        ctx.rotate(wiggleAngle);
+        ctx.translate(-(bx + cardW / 2), -(by + cardH / 2));
+      }
+
+      // Perbesar jika di-hover
+      if (isHovered) {
+        ctx.translate(bx + cardW / 2, by + cardH / 2);
+        ctx.scale(1.1, 1.1);
+        ctx.translate(-(bx + cardW / 2), -(by + cardH / 2));
+      }
+
+      // Gambar kartu seperti biasa
       ctx.shadowBlur = quality === "high" ? 25 : 0;
       ctx.shadowColor = "rgba(95,232,255,0.4)";
       const gradient = ctx.createLinearGradient(bx, by, bx, by + cardH);
@@ -1600,9 +1813,7 @@ function draw() {
       ctx.beginPath();
       if (typeof ctx.roundRect === "function")
         ctx.roundRect(bx, by, cardW, cardH, 12);
-      else {
-        ctx.rect(bx, by, cardW, cardH);
-      }
+      else ctx.rect(bx, by, cardW, cardH);
       ctx.fill();
 
       let borderColor =
@@ -1634,6 +1845,7 @@ function draw() {
         ctx.drawImage(icon, ix, iy, iw, ih);
         ctx.shadowBlur = 0;
       }
+
       ctx.fillStyle = borderColor;
       ctx.font = `bold ${Math.floor(
         canvas.height * 0.028
@@ -1658,17 +1870,19 @@ function draw() {
         } else line = test;
       });
       ctx.fillText(line, bx + cardW / 2, y);
+
       const clickPulse = Math.sin(Date.now() / 300) * 0.3 + 0.7;
       ctx.fillStyle = `rgba(255,255,255,${clickPulse})`;
       ctx.font = `${Math.floor(canvas.height * 0.018)}px Orbitron, sans-serif`;
       ctx.fillText("[ CLICK TO SELECT ]", bx + cardW / 2, by + cardH - 15);
+
+      ctx.restore();
     });
 
     ctx.restore();
     if (shook) ctx.restore();
     return;
   }
-
   // Menu (Demo)
   if (showMenu) {
     if (!demoPlayer) initDemo();
@@ -1705,7 +1919,6 @@ function draw() {
     if (shook) ctx.restore();
     return;
   }
-
   // Player + shields/rage
   if (!gameOverState) {
     drawPlayer(player.x, player.y);
@@ -1736,7 +1949,6 @@ function draw() {
       ctx.restore();
     }
   }
-
   // Bullets
   for (let i = 0; i < bullets.length; i++) {
     const b = bullets[i];
@@ -1760,7 +1972,6 @@ function draw() {
       ctx.fillRect(b.x - 2, b.y - 5, 4, 10);
     }
   }
-
   // Enemy bullets
   for (let i = 0; i < enemyBullets.length; i++) {
     const b = enemyBullets[i];
@@ -1833,14 +2044,12 @@ function draw() {
       ctx.fillRect(b.x - 2, b.y - 4, 4, 8);
     }
   }
-
   // Sniper bullets
   ctx.fillStyle = "cyan";
   for (let i = 0; i < sniperShots.length; i++) {
     const s = sniperShots[i];
     ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
   }
-
   // Enemies
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
@@ -1850,7 +2059,6 @@ function draw() {
     drawEnemy(e);
     ctx.globalAlpha = 1;
   }
-
   // Explosions & rocket rings
   for (let i = 0; i < explosions.length; i++) {
     const ex = explosions[i];
@@ -1869,9 +2077,7 @@ function draw() {
     ctx.stroke();
     ctx.restore();
   }
-
   drawSniper();
-
   if (levelTextTimer > 0 && !gameOverState) {
     ctx.save();
     ctx.globalAlpha = Math.min(1, levelTextTimer / 500);
@@ -1885,7 +2091,6 @@ function draw() {
     );
     ctx.restore();
   }
-
   if (gameOverState) {
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.7)";
@@ -1912,7 +2117,6 @@ function draw() {
     }
     ctx.restore();
   }
-
   if (boss) {
     drawBoss(boss);
     ctx.save();
@@ -1926,7 +2130,6 @@ function draw() {
     ctx.fillRect(canvas.width / 2 - 150, 40, (boss.hp / boss.maxHp) * 300, 12);
     ctx.restore();
   }
-
   if (hitFlash > 0) {
     ctx.save();
     ctx.fillStyle = "rgba(255,0,0,0.4)";
@@ -1934,9 +2137,58 @@ function draw() {
     ctx.restore();
     hitFlash -= 16;
   }
+  // === Render Dodge floating texts ===
+  if (dodgeTexts.length > 0) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = "bold 18px Orbitron, sans-serif";
+    for (let i = dodgeTexts.length - 1; i >= 0; i--) {
+      const t = dodgeTexts[i];
+      // update efek sederhana
+      t.x += t.vx;
+      t.y += t.vy;
+      t.life -= 16; // kira-kira per frame (16ms)
+      const progress = Math.max(0, t.life) / t.maxLife;
+      t.alpha = Math.max(0, progress); // fade out
+      t.scale = 1.0 + (1 - progress) * 0.1; // sedikit membesar saat memudar
+
+      // warna cyan terang dengan glow kecil jika quality high
+      if (quality === "high") {
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "#5fe8ff";
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillStyle = `rgba(95,232,255,${Math.min(1, 0.9 * t.alpha)})`;
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.scale(t.scale, t.scale);
+      ctx.fillText("DODGED!", 0, 0);
+      ctx.restore();
+
+      if (t.life <= 0) dodgeTexts.splice(i, 1);
+    }
+    ctx.restore();
+  }
+
+  // === Render Dodge banner (opsional) ===
+  if (dodgeBanner.life > 0) {
+    const a = Math.min(1, dodgeBanner.life / dodgeBanner.maxLife);
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = "bold 22px Orbitron, sans-serif";
+    if (quality === "high") {
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = "#5fe8ff";
+    }
+    ctx.fillStyle = `rgba(95,232,255,${0.85 * a})`;
+    ctx.fillText("DODGED!", canvas.width / 2, 60);
+    ctx.restore();
+
+    dodgeBanner.life -= 16;
+  }
   if (shook) ctx.restore();
 }
-
 // ===== Buff UI (asli, tetap) =====
 function initBuffUI() {
   const buffGrid = document.getElementById("buffGrid");
@@ -1966,7 +2218,6 @@ function initBuffUI() {
     face.appendChild(img);
     face.appendChild(plus);
     card.appendChild(face);
-
     card.addEventListener("animationend", (ev) => {
       const name = ev.animationName;
       if (name === "borderRefill") {
@@ -1997,7 +2248,6 @@ function initBuffUI() {
         if (im) im.style.filter = "grayscale(100%) brightness(0.6)";
       }
     });
-
     buffGrid.appendChild(card);
   }
   buffGrid.addEventListener("mouseover", (e) => {
@@ -2094,7 +2344,6 @@ function refreshBuffCards(forceRefill = false) {
       im.style.filter = "none";
     }
     if (plus) plus.style.display = "none";
-
     const isConsumptive = consumptiveList.includes(buff);
     if (isConsumptive) {
       if (!gameStarted) {
@@ -2168,6 +2417,85 @@ function refreshBuffCards(forceRefill = false) {
     if (im) im.style.filter = "none";
   }
 }
+// === Animate selected buff card fly from canvas to first empty slot ===
+function animateBuffPick(buff, fromRect, onDone) {
+  const grid = document.getElementById("buffGrid");
+  if (!grid) {
+    onDone?.();
+    return;
+  }
+
+  // Slot tujuan = slot kosong pertama (index = activeBuffs.length sekarang)
+  const targetIndex = Math.min(
+    activeBuffs.length,
+    grid.querySelectorAll(".buffCard").length - 1
+  );
+  const targetCard = grid.querySelectorAll(".buffCard")[targetIndex];
+  if (!targetCard) {
+    onDone?.();
+    return;
+  }
+
+  // >>> Pilih anchor: pakai wajah kartu agar terlihat 'masuk ke dalam' slot
+  const face = targetCard.querySelector(".buffFace");
+  const toRect = face
+    ? face.getBoundingClientRect()
+    : targetCard.getBoundingClientRect();
+
+  // Buat ghost
+  const ghost = document.createElement("div");
+  ghost.className = "flyBuff";
+  const img = new Image();
+  img.src = `img/${buff.toLowerCase().replace(/ /g, "_")}.png`;
+  img.alt = buff;
+  ghost.appendChild(img);
+  document.body.appendChild(ghost);
+
+  // Ukuran & posisi awal dari canvas (sudah dipetakan ke viewport)
+  const startW = fromRect.width;
+  const startH = fromRect.height;
+  const startX = fromRect.left;
+  const startY = fromRect.top;
+  ghost.style.width = `${startW}px`;
+  ghost.style.height = `${startH}px`;
+  ghost.style.transform = `translate(${startX}px, ${startY}px) scale(1) rotate(-0.6deg)`;
+  ghost.style.opacity = "0";
+  void ghost.offsetWidth; // ensure initial styles applied
+
+  // ---- Hitung skala target ----
+  // Kita pakai uniform scale (rasio terkecil) supaya ghost masuk ke slot tanpa distorsi.
+  const scaleX = toRect.width / startW;
+  const scaleY = toRect.height / startH;
+  const s = Math.min(scaleX, scaleY); // uniform
+  // Ukuran ghost setelah di-scale:
+  const endGhostW = startW * s;
+  const endGhostH = startH * s;
+
+  // ---- Hitung posisi akhir (top-left) agar ghost center == slot center ----
+  const endX = toRect.left + (toRect.width - endGhostW) / 2;
+  const endY = toRect.top + (toRect.height - endGhostH) / 2;
+
+  // Pasang CSS var yang dibaca keyframes
+  ghost.style.setProperty("--end-x", `${endX}px`);
+  ghost.style.setProperty("--end-y", `${endY}px`);
+  ghost.style.setProperty("--end-scale", `${s}`);
+
+  // Pulse slot tujuan
+  targetCard.classList.add("acceptPulse");
+
+  // Jalankan animasi
+  ghost.classList.add("animating");
+
+  const cleanup = () => {
+    targetCard.classList.remove("acceptPulse");
+    ghost.remove();
+    onDone?.();
+  };
+  ghost.addEventListener("animationend", cleanup, { once: true });
+  setTimeout(() => {
+    if (document.body.contains(ghost)) cleanup();
+  }, 600); // fallback
+}
 function updateBuffList() {
   const buffGrid = document.getElementById("buffGrid");
   if (!buffGrid) return;
@@ -2178,13 +2506,11 @@ function updateBuffList() {
     "Healing Ring",
     "Sniper Aid",
   ];
-
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i],
       faceImg = card.querySelector("img"),
       plus = card.querySelector(".plus");
     const prev = card.dataset.status ?? "empty";
-
     if (i >= activeBuffs.length) {
       if (prev !== "empty") {
         card.classList.remove(
@@ -2205,14 +2531,12 @@ function updateBuffList() {
       }
       continue;
     }
-
     const buff = activeBuffs[i],
       src = `img/${buff.toLowerCase().replace(/ /g, "_")}.png`;
     if (faceImg.getAttribute("src") !== src) faceImg.setAttribute("src", src);
     faceImg.alt = buff;
     faceImg.style.display = "";
     if (plus) plus.style.display = "none";
-
     let remaining = 1,
       max = 1,
       color = "cyan";
@@ -2247,11 +2571,9 @@ function updateBuffList() {
       remaining = secondChanceUsed ? 0 : 1;
       color = "gold";
     }
-
     card.style.setProperty("--buff-color", color);
     card.style.setProperty("--fill", String(remaining));
     card.dataset.fill = String(remaining);
-
     const isConsumptive = consumptiveList.includes(buff);
     if (isConsumptive) {
       if (remaining <= 0) {
@@ -2281,7 +2603,6 @@ function updateBuffList() {
       card.dataset.status = "active";
     }
   }
-
   // === FIX: jangan paksa --fill kembali ke 1 tiap frame pada buff konsumtif ===
   document.querySelectorAll(".buffCard").forEach((card, i) => {
     const buff = activeBuffs[i];
@@ -2298,7 +2619,6 @@ function updateBuffList() {
     }
   });
 }
-
 // Init Buff UI
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
@@ -2316,9 +2636,12 @@ document.addEventListener("DOMContentLoaded", () => {
     tooltip.classList.add("hidden");
   });
 });
-
 // ===== Game Over =====
 function gameOver() {
+  if (level === 1) {
+    showSpecialDeathDialog();
+  }
+
   if (activeBuffs.includes("Second Chance") && !secondChanceUsed) {
     secondChanceUsed = true;
     lives = 2;
@@ -2336,7 +2659,6 @@ function gameOver() {
     localStorage.setItem("highScore", highScore);
   }
 }
-
 // ===== Demo =====
 function initDemo() {
   demoPlayer = {
@@ -2405,7 +2727,6 @@ function updateDemo() {
       e.type = roll < 0.1 ? "purple" : roll < 0.4 ? "yellow" : "green";
     }
   }
-
   let target = null;
   if (demoEnemies.length > 0)
     target = demoEnemies.reduce((a, b) => (a.y > b.y ? a : b));
@@ -2470,7 +2791,6 @@ function updateDemo() {
     b.y += b.vy;
   }
   demoEnemyBullets = demoEnemyBullets.filter((b) => b.y < canvas.height + 20);
-
   for (let i = demoEnemyBullets.length - 1; i >= 0; i--) {
     const b = demoEnemyBullets[i];
     if (demoPlayer.alive && rectsOverlap(b, demoPlayer)) {
@@ -2508,7 +2828,6 @@ function updateDemo() {
   }
   explosions = explosions.filter((ex) => ex.life > 0);
 }
-
 // ===== Loop =====
 let lastTime = performance.now();
 function loop(ts) {
@@ -2518,7 +2837,6 @@ function loop(ts) {
   draw();
   requestAnimationFrame(loop);
 }
-
 // ===== Input =====
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
@@ -2549,12 +2867,10 @@ window.addEventListener("keyup", (e) => {
   keys[e.key.toLowerCase()] = false;
   keys[e.code.toLowerCase()] = false;
 });
-
 document.getElementById("btnStart").addEventListener("click", () => {
   if (showMenu) initGame();
 });
 document.getElementById("btnReset").addEventListener("click", initGame);
-
 // ===== Start =====
 rebuildBackgroundCache();
 rebuildStarLayers();
